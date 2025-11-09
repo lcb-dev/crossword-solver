@@ -1,11 +1,14 @@
 import tkinter
 from tkinter import ttk
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
 ROWS: int = 5
 COLS: int = 5
+
+LETTER_REGEX = re.compile(r'^[A-Za-z]$') # Regex to match single letter.
 
 def main() -> None:
     logging_setup()
@@ -26,7 +29,9 @@ def setup_crossword_grid(root: tkinter.Tk, rows: int=5, cols: int=5):
     logger.debug(f"Setting up crossword grid with cols={cols} rows={rows}.")
 
     def on_validate(txt: str) -> bool:
-        return len(txt) <= 1
+        if(txt==""):
+            return True
+        return bool(LETTER_REGEX.fullmatch(txt))
 
     valcmd = (root.register(on_validate), '%P')
 
