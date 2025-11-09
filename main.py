@@ -5,6 +5,8 @@ import tkinter
 import nltk
 import io
 import contextlib
+from random import choice
+from string import ascii_letters
 from nltk.corpus import words
 from tkinter import ttk
 from datetime import datetime
@@ -17,8 +19,11 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-ROWS: int = 5
-COLS: int = 5
+ROWS: int = 10
+COLS: int = 10
+
+ENTRIES: List[tkinter.Entry] = []
+VARS_GRID: List[tkinter.StringVar] = []
 
 LETTER_REGEX = re.compile(r'^[A-Za-z]$') # Regex to match single letter.
 
@@ -28,11 +33,9 @@ def main() -> None:
     get_words_data()
     setup_gui()
 
-
 ###             ###
 ###     GUI     ###
 ###             ###
-
 
 def setup_gui():
 
@@ -44,10 +47,11 @@ def setup_gui():
     root = tkinter.Tk()
     frame = tkinter.ttk.Frame(root, padding=10)
     frame.grid()
+    ENTRIES, VARS_GRID = setup_crossword_grid(root, ROWS, COLS)
     tkinter.ttk.Label(frame, text="Crossword Solver").grid(column=0, row=0)
-    tkinter.ttk.Button(frame, text="Quit", command=shutdown_app).grid(column=1, row=0)
-    entries, vars_grid = setup_crossword_grid(root, ROWS, COLS)
-
+    tkinter.ttk.Button(frame, text="Quit", command=shutdown_app).grid(column=0, row=1)
+    tkinter.ttk.Button(frame, text="Fill Letters", command=lambda: fill_random_letters(ENTRIES, VARS_GRID)).grid(column=0, row=2)
+    
     root.mainloop()
 
 def setup_crossword_grid(root: tkinter.Tk, rows: int=5, cols: int=5) -> Tuple[List[tkinter.Entry],List[tkinter.StringVar]]:
@@ -57,7 +61,7 @@ def setup_crossword_grid(root: tkinter.Tk, rows: int=5, cols: int=5) -> Tuple[Li
     vars_grid = []
 
     # For input validation.
-    def make_trace_callback(strvar: tkinter.StringVar):
+    def make_trace_callback(strvar: tkinter.StringVar, row: int, col: int):
         def callback(*_):
             value = strvar.get()
             if value == "":
@@ -70,6 +74,7 @@ def setup_crossword_grid(root: tkinter.Tk, rows: int=5, cols: int=5) -> Tuple[Li
                     strvar.set(value_upper)
             else:
                 strvar.set('')
+            logger.info(f"[{row},{col}] Value: {strvar.get()}.")
             
         return callback
 
@@ -79,13 +84,14 @@ def setup_crossword_grid(root: tkinter.Tk, rows: int=5, cols: int=5) -> Tuple[Li
         row_vars: List[tkinter.StringVar] = []
         for col in range(1, cols+1):
             sv = tkinter.StringVar()
-            sv.trace_add('write', make_trace_callback(sv))
+            sv.trace_add('write', make_trace_callback(sv, row, col))
             e = tkinter.Entry(
                 root,
                 textvariable=sv,
                 width=2,
                 justify='center'
-            ).grid(row=row, column=col, padx=2, pady=2)
+            )
+            e.grid(row=row, column=col, padx=2, pady=2)
             
             row_entries.append(e)
             row_vars.append(sv)
@@ -137,6 +143,17 @@ def get_words_data():
                 logger.info(f"{line}")
 
     logger.info(f"Loaded words: {len(words.words())}\n")
+
+###                   ###
+###     BEHAVIOUR     ###
+###                   ###
+
+def fill_random_letters(entries, vars_grid, rows=ROWS,cols=COLS) -> None:
+    logger.info(f"Filling random letters in grid from (0,0) to ({rows},{cols})")
+    for row_vars in vars_grid:
+        for var in row_vars:
+            var.set(choice(ascii_letters).upper())
+    pass
 
 if __name__=='__main__':
     main()
