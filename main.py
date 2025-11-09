@@ -1,4 +1,4 @@
-import os
+import os, sys
 import logging
 import re
 import tkinter
@@ -11,7 +11,7 @@ from string import ascii_letters
 from nltk.corpus import words
 from tkinter import ttk
 from datetime import datetime
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from pathlib import Path
 
 ###                 ###
@@ -27,6 +27,8 @@ ENTRIES: List[tkinter.Entry] = []
 VARS_GRID: List[tkinter.StringVar] = []
 
 VALID_WORDS = set(words.words())
+print(sys.getsizeof(VALID_WORDS)," bytes [set]")
+print(sys.getsizeof(words.words())," bytes [raw]")
 
 LETTER_REGEX = re.compile(r'^[A-Za-z]$') # Regex to match single letter.
 
@@ -162,17 +164,10 @@ def fill_random_letters(entries, vars_grid, rows=ROWS,cols=COLS) -> None:
 
 def get_words_in_crossword(vars_grid, entries_grid):
     """
-        1. Interate over each letter in the grid. 
-        2. For each letter, iterate over directions (up, down, left, right)
-        3. Go to the next letter in that direction, begin building a char array. Go until edge of grid.
-        4. Once full char array is built, try combinations of first letter + N consecutive letters and see if it is a word in NLTK words list.
-        5. If a word is found, log for now [example: 'help' if full string is: ['h','e','l','p','f','u','l']. If still more letters, continue [example: Now 'helpful', as continued down line.]
-        6. Do this for every direction, for every letter. Keep a dict of words found tied to their coordinates some how. Example: (0,0)-(0,4):'help'. 
-        7. Once finished, iterate over all words found and their coordinates and print.
+    Scan a crossword grid for valid words in all four directions and highlight them.
     """
     valid_words = VALID_WORDS
     found_words = {}
-
     directions = {
         "right": (0, 1),
         "down": (1, 0),
@@ -180,68 +175,71 @@ def get_words_in_crossword(vars_grid, entries_grid):
         "up": (-1, 0)
     }
 
-    # Helper - safely get letter at location.
-    def get_letter(row, col):
-        if((0 <= row < ROWS) and (0 <= col < COLS)):
-            return vars_grid[row][col].get().lower()
+    def get_letter(r, c):
+        if 0 <= r < ROWS and 0 <= c < COLS:
+            return vars_grid[r][c].get().lower()
         return None
 
-    # reset all cell colours.
+    def scan_direction(row, col, dr, dc):
+        """Scan a direction from a starting cell and return found words with positions."""
+        letters = []
+        positions = []
+        r, c = row, col
+        while 0 <= r < ROWS and 0 <= c < COLS:
+            letter = get_letter(r, c)
+            if not letter:
+                break
+            letters.append(letter)
+            positions.append((r, c))
+            # Generate all possible word candidates from this prefix
+            for length in range(2, len(letters)+1):
+                word_candidate = ''.join(letters[:length])
+                if word_candidate in valid_words and len(word_candidate) > 2:
+                    real_word, _ = is_real_word(word_candidate)
+                    if real_word:
+                        found_words[(positions[0], positions[length-1])] = word_candidate
+            r += dr
+            c += dc
+
+    # Reset all cell colors
     for r in range(ROWS):
         for c in range(COLS):
             entries_grid[r][c].config(bg="white")
 
+    # Scan every cell in every direction
     for row in range(ROWS):
         for col in range(COLS):
-            first_letter = get_letter(row, col)
-            if not first_letter:
-                continue
+            if get_letter(row, col):
+                for dr, dc in directions.values():
+                    scan_direction(row, col, dr, dc)
 
-            for direction, (dir_row, dir_col) in directions.items():
-                letters = [first_letter]
-                positions = [(row, col)]
-
-                next_row, next_col = row + dir_row, col + dir_col
-
-                while ((0 <= next_row < ROWS) and (0 <= next_col < COLS)):
-                    letter = get_letter(next_row, next_col)
-                    if not letter:
-                        break
-                    letters.append(letter)
-                    positions.append((next_row, next_col))
-                    next_row += dir_row
-                    next_col += dir_col
-                
-                for length in range(2, len(letters)+1):
-                    word_candidate = ''.join(letters[:length])
-                    if word_candidate in valid_words and len(word_candidate) > 2:
-                        real_word, _ = is_real_word(word_candidate)
-                        if(real_word):
-                            found_words[(positions[0], positions[length-1])] = word_candidate
-                            logger.debug(f"Added word: {word_candidate}")
-                        else:
-                            logger.debug(f"Skipping word without definition: {word_candidate}")
-
-                        
+    # Highlight found words
     for (start, end), word in found_words.items():
         sr, sc = start
         er, ec = end
-        if sr == er:  # horizontal
-            for c in range(sc, ec+1):
-                entries_grid[sr][c].config(bg='lightgreen')
-        else:  # vertical
-            for r in range(sr, er+1):
-                entries_grid[r][sc].config(bg='lightgreen')
+        for r, c in positions_between(start, end):
+            entries_grid[r][c].config(bg='lightgreen')
 
-    counter = 0
-    for coords, word in found_words.items():
-        counter+=1
+    # Print results
+    for idx, (coords, word) in enumerate(found_words.items(), 1):
         real_word, definition = is_real_word(word)
-        if(real_word):
-            print(f"[{counter}] {coords} {word:<10} - Definition: {definition}")
-        
+        if real_word:
+            print(f"[{idx}] {coords} {word:<10} - Definition: {definition}")
+
     found_words.clear()
 
+
+def positions_between(start, end):
+    """Yield all grid positions between start and end inclusive (supports straight lines)."""
+    sr, sc = start
+    er, ec = end
+    dr = (er - sr) // max(1, abs(er - sr)) if er != sr else 0
+    dc = (ec - sc) // max(1, abs(ec - sc)) if ec != sc else 0
+    r, c = sr, sc
+    while (r, c) != (er + dr, ec + dc):
+        yield r, c
+        r += dr
+        c += dc
 
 def is_real_word(word: str) -> Tuple[bool,str]:
     time.sleep(0.5)
