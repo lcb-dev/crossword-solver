@@ -207,4 +207,4 @@ marimo/_lsp/
 __marimo__/
 
 # NLTK
-.nltk_data/
+nltk_data/
